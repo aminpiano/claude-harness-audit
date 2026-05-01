@@ -1,29 +1,76 @@
 # claude-harness-audit
 
-A **diagnostic-only** Claude Code skill that audits your project's harness (`CLAUDE.md`, `MEMORY.md`, lessons, hooks, skills, docs) against the current Claude Code feature set and reports any conflicts or drift.
+A **read-only harness measurement** Claude Code skill.
 
-> **What it does NOT do**: generate templates, create new files, design an "ideal" project structure, or rewrite anything automatically. It only reads, diagnoses, and reports. All changes remain under your control.
+It does not redesign your harness. It measures whether the current harness is
+still helping: context budget, session recovery, rule conflicts, provider drift,
+bloat, permission risk, and maintainability.
 
-## What is a "harness"?
+## What is a harness?
 
-Following Martin Fowler's / HumanLayer's definition: `Agent = Model + Harness`. The harness is everything wrapping the LLM — `CLAUDE.md` rules, memory files, hooks, skills, subagents, MCP servers, documentation — the whole scaffolding that shapes how a Claude Code session behaves in your project.
+`Agent = Model + Harness`.
 
-Over time, Claude Code itself evolves (2.1.x shipped 38+ patches between 2.1.69 and 2.1.107 alone, many undocumented). Your harness drifts out of sync with reality. This skill finds where.
+The harness is everything around the model that shapes behavior:
+
+- `CLAUDE.md`
+- auto-memory / project memory
+- hooks
+- skills
+- plugins
+- session logs
+- project docs
+- permissions and runtime conventions
+
+As Claude Code changes, a personal/project harness can drift. The useful answer
+is not always "add more rules"; often it is "keep", "trim", "remove", or
+"move this out of autoload".
+
+## What this skill does
+
+The skill produces a compact dashboard:
+
+- **Autoload Budget** — how much context the harness consumes at startup
+- **Recovery Quality** — whether a fresh session can resume quickly
+- **Rule Conflict** — duplicated or contradictory instructions
+- **Provider Drift** — stale assumptions after Claude Code/provider updates
+- **Bloat / 비대화** — progress/docs becoming changelogs or raw logs
+- **Safety / Permission Surface** — risky hooks or automated actions
+- **Maintainability** — whether each harness piece has a clear reason to exist
+
+Each area gets a 0-5 operational score plus one of:
+
+- `유지` — keep
+- `수정` — tune
+- `제거` — remove
+- `격리` — move out of autoload / read only when needed
+- `보류` — not enough evidence
+
+## What it does not do
+
+- No file creation
+- No file edits
+- No deletes or moves
+- No hook/script execution
+- No template generation
+- No "ideal harness architecture" redesign
+
+It stops at measurement and recommendation. Actual changes happen only after
+the user chooses a specific item.
 
 ## Installation
 
-### Personal (available in every project)
+### Personal
+
+```bash
+git clone https://github.com/aminpiano/claude-harness-audit.git ~/.claude/skills/harness-audit
+```
+
+Or install only the skill file:
 
 ```bash
 mkdir -p ~/.claude/skills/harness-audit
 curl -fsSL https://raw.githubusercontent.com/aminpiano/claude-harness-audit/main/SKILL.md \
   -o ~/.claude/skills/harness-audit/SKILL.md
-```
-
-Or clone the whole repo:
-
-```bash
-git clone https://github.com/aminpiano/claude-harness-audit.git ~/.claude/skills/harness-audit
 ```
 
 ### Project-local
@@ -34,37 +81,60 @@ curl -fsSL https://raw.githubusercontent.com/aminpiano/claude-harness-audit/main
   -o .claude/skills/harness-audit/SKILL.md
 ```
 
-Claude Code's live change detection picks up the new skill within the current session — no restart needed.
-
 ## Usage
 
-Once installed, Claude Code loads the skill's description automatically at session start. Trigger it by asking naturally:
+Ask naturally:
 
-- "하네스 점검해줘" / "Audit my harness"
-- "Is my CLAUDE.md aligned with the current Claude Code features?"
-- "Claude Code 업데이트됐는데 내 설정 재배치 필요한지 봐줘"
+- "하네스 점검해줘"
 - "세션 설정 검토"
+- "CLAUDE.md 재배치 필요한지 봐줘"
+- "Claude Code 업데이트 이후 내 하네스 괴리 봐줘"
 
-The skill runs a four-stage audit:
+## Modes
 
-1. **Inventory** — scans `CLAUDE.md`, `MEMORY.md`, `~/.claude/settings.json`, `ai-docs/`, `memory/`, `context/`, `~/.claude/skills/`, project `.claude/` dirs. Counts lines, files, hook registrations.
-2. **Feature facts** — checks against the current Claude Code feature set (skill description 1,536-char cap, SessionStart stdout injection, deferred tools, hook frontmatter field, `` !`<cmd>` `` injection, etc.). Optionally re-verifies against official docs via `WebFetch`.
-3. **Drift checklist** — walks checklist A–K (session-start rule vs hook alignment, skill description budget pressure, CLAUDE.md top-30-line usage, MEMORY.md length, hook wiring, Single-Source-of-Truth violations, legacy artifacts, machine branching, deferred tool guidance, skill duplication, plugin conflicts).
-4. **Report** — outputs a structured markdown report with each drift item labeled `[괴리]` (conflict/drift), a recommendation, and a prioritized action list. **Stops there** — no automatic fixes.
+- **Quick Audit**: default. Local inventory and dashboard scoring.
+- **Drift Audit**: used when provider/Claude Code updates are part of the
+  request. The skill verifies official docs before making drift claims.
+- **Deep Audit**: only when explicitly requested. It still avoids raw
+  transcript/log dumps.
 
-## Design principles
+## Output Shape
 
-- **Diagnostic, not prescriptive**: reports facts, leaves decisions to you.
-- **No hardcoded project paths**: works for any project using `pwd`, `git rev-parse --show-toplevel`, `$HOME`.
-- **Factual, not theoretical**: no abstract frameworks (e.g. "N-axis × M-rule × K-principle"). Every check is a concrete boolean backed by official Claude Code documentation.
-- **Self-updating facts**: the skill body instructs Claude to re-verify the "feature facts" section against official documentation when needed, so it stays useful across Claude Code version bumps.
-- **Bilingual (한국어/English)**: report template and internal prompts use Korean headings; the skill itself works regardless of user language.
+```markdown
+# 하네스 계기판
+
+점검일: YYYY-MM-DD
+프로젝트: /path/to/project
+모드: Quick
+전체 판정: 정리 권장
+
+## 점수판
+
+| 항목 | 점수 | 판정 | 핵심 근거 |
+|---|---:|---|---|
+| Autoload Budget | 4/5 | 유지 | ... |
+| Recovery Quality | 3/5 | 수정 | ... |
+| Rule Conflict | 5/5 | 유지 | ... |
+
+## 주요 발견
+
+1. **High** - ...
+   - 근거: `file:line`
+   - 영향: ...
+   - 권고: 수정
+
+## 바로 할 일
+
+1. ...
+2. ...
+3. ...
+```
 
 ## Files
 
-- `SKILL.md` — the skill definition (frontmatter + audit instructions). This is the only file Claude Code reads.
-- `README.md` — this file (not loaded by Claude Code).
-- `LICENSE` — MIT.
+- `SKILL.md` — skill definition loaded by Claude Code
+- `README.md` — repository documentation
+- `LICENSE` — MIT
 
 ## References
 
